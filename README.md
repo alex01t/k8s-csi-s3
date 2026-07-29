@@ -167,6 +167,29 @@ You can check POSIX compatibility matrix here: https://github.com/yandex-cloud/g
   or restarted. Add `--no-systemd` to `parameters.options` of the `StorageClass`
   to disable this behaviour.
 
+GeeseFS disk caching can be enabled per volume with the `diskCache: "true"`
+volume attribute. The driver supplies the cache option itself, using an isolated
+directory at `/var/lib/geesefs-cache/<volume-id>`. Set `DISK_CACHE_PATH` on the
+driver container to change the cache root. For example, a statically provisioned
+volume can enable it as follows:
+
+```yaml
+spec:
+  csi:
+    driver: ru.yandex.s3.csi
+    volumeAttributes:
+      capacity: 10Gi
+      mounter: geesefs
+      diskCache: "true"
+      options: >-
+        --memory-limit 14000
+        --dir-mode 0777
+        --file-mode 0666
+```
+
+The `--cache` mount option is still ignored when supplied through `options`, so
+volume configuration cannot select an arbitrary host path.
+
 #### s3fs
 
 * Almost full POSIX compatibility

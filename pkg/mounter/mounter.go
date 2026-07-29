@@ -31,6 +31,7 @@ const (
 	TypeKey            = "mounter"
 	BucketKey          = "bucket"
 	OptionsKey         = "options"
+	DiskCacheKey       = "diskCache"
 )
 
 // New returns a new mounter depending on the mounterType parameter

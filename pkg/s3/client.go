@@ -40,6 +40,7 @@ type FSMeta struct {
 	Prefix        string   `json:"Prefix"`
 	Mounter       string   `json:"Mounter"`
 	MountOptions  []string `json:"MountOptions"`
+	DiskCache     bool     `json:"DiskCache"`
 	CapacityBytes int64    `json:"CapacityBytes"`
 }
 

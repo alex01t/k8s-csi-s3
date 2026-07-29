@@ -1,8 +1,11 @@
 package mounter
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -14,8 +17,26 @@ import (
 )
 
 const (
-	geesefsCmd    = "geesefs"
+	geesefsCmd           = "geesefs"
+	defaultDiskCachePath = "/var/lib/geesefs-cache"
 )
+
+var safeVolumeID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// derivedCacheDirectory returns a volume-specific directory below the configured
+// cache root. Hashing unusual volume IDs prevents separators and traversal
+// sequences supplied by a statically provisioned volume from escaping the root.
+func derivedCacheDirectory(volumeID string) string {
+	root := os.Getenv("DISK_CACHE_PATH")
+	if root == "" {
+		root = defaultDiskCachePath
+	}
+	name := volumeID
+	if !safeVolumeID.MatchString(name) || name == "." || name == ".." || len(name) > 255 {
+		name = fmt.Sprintf("volume-%x", sha256.Sum256([]byte(volumeID)))
+	}
+	return filepath.Join(root, name)
+}
 
 // Implements Mounter
 type geesefsMounter struct {
@@ -116,12 +137,20 @@ func (geesefs *geesefsMounter) Mount(target, volumeID string) error {
 			if e >= 0 {
 				key = opt[s:e]
 			}
-			if key == "log-file" || key == "shared-config" || key == "cache" {
+			if key == "cache" {
+				// Cache paths are only accepted through the diskCache volume
+				// attribute, which derives a path controlled by the driver.
+				if e < 0 {
+					i++
+				}
+			} else if key == "log-file" || key == "shared-config" {
 				// Skip options accessing local FS
 				unsafeArgs = append(unsafeArgs, opt)
-				i++
-				if i < len(geesefs.meta.MountOptions) {
-					unsafeArgs = append(unsafeArgs, geesefs.meta.MountOptions[i])
+				if e < 0 {
+					i++
+					if i < len(geesefs.meta.MountOptions) {
+						unsafeArgs = append(unsafeArgs, geesefs.meta.MountOptions[i])
+					}
 				}
 			} else if key != "" {
 				args = append(args, opt)
@@ -133,6 +162,9 @@ func (geesefs *geesefsMounter) Mount(target, volumeID string) error {
 	if !useSystemd {
 		// Unsafe options are allowed when running inside the container
 		args = append(args, unsafeArgs...)
+	}
+	if geesefs.meta.DiskCache {
+		args = append(args, "--cache", derivedCacheDirectory(volumeID))
 	}
 	args = append(args, fullPath, target)
 	// Try to start geesefs using systemd so it doesn't get killed when the container exits
@@ -153,21 +185,21 @@ func (geesefs *geesefsMounter) Mount(target, volumeID string) error {
 	if pluginDir == "" {
 		pluginDir = "/var/lib/kubelet/plugins/ru.yandex.s3.csi"
 	}
-	args = append([]string{pluginDir+"/geesefs", "-f", "-o", "allow_other", "--endpoint", geesefs.endpoint}, args...)
-	glog.Info("Starting geesefs using systemd: "+strings.Join(args, " "))
-	unitName := "geesefs-"+systemd.PathBusEscape(volumeID)+".service"
+	args = append([]string{pluginDir + "/geesefs", "-f", "-o", "allow_other", "--endpoint", geesefs.endpoint}, args...)
+	glog.Info("Starting geesefs using systemd: " + strings.Join(args, " "))
+	unitName := "geesefs-" + systemd.PathBusEscape(volumeID) + ".service"
 	newProps := []systemd.Property{
 		systemd.Property{
-			Name: "Description",
-			Value: dbus.MakeVariant("GeeseFS mount for Kubernetes volume "+volumeID),
+			Name:  "Description",
+			Value: dbus.MakeVariant("GeeseFS mount for Kubernetes volume " + volumeID),
 		},
 		systemd.PropExecStart(args, false),
 		systemd.Property{
-			Name: "Environment",
-			Value: dbus.MakeVariant([]string{ "AWS_ACCESS_KEY_ID="+geesefs.accessKeyID, "AWS_SECRET_ACCESS_KEY="+geesefs.secretAccessKey }),
+			Name:  "Environment",
+			Value: dbus.MakeVariant([]string{"AWS_ACCESS_KEY_ID=" + geesefs.accessKeyID, "AWS_SECRET_ACCESS_KEY=" + geesefs.secretAccessKey}),
 		},
 		systemd.Property{
-			Name: "CollectMode",
+			Name:  "CollectMode",
 			Value: dbus.MakeVariant("inactive-or-failed"),
 		},
 	}
@@ -188,7 +220,7 @@ func (geesefs *geesefsMounter) Mount(target, volumeID string) error {
 				// FIXME This may mean that the same bucket&path are used for multiple PVs. Support it somehow
 				return fmt.Errorf(
 					"GeeseFS for volume %v is already mounted on host, but"+
-					" in a different directory. We want %v, but it's in %v",
+						" in a different directory. We want %v, but it's in %v",
 					volumeID, target, curPath,
 				)
 			}

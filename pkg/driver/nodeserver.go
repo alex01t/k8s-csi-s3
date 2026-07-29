@@ -55,11 +55,13 @@ func getMeta(bucketName, prefix string, context map[string]string) *s3.FSMeta {
 		}
 	}
 	capacity, _ := strconv.ParseInt(context["capacity"], 10, 64)
+	diskCache, _ := strconv.ParseBool(context[mounter.DiskCacheKey])
 	return &s3.FSMeta{
 		BucketName:    bucketName,
 		Prefix:        prefix,
 		Mounter:       context[mounter.TypeKey],
 		MountOptions:  mountOptions,
+		DiskCache:     diskCache,
 		CapacityBytes: capacity,
 	}
 }
