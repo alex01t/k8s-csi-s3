@@ -1,8 +1,6 @@
 package mounter
 
 import (
-	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -22,8 +20,7 @@ func TestDerivedCacheDirectoryUsesConfiguredRoot(t *testing.T) {
 
 func TestDerivedCacheDirectoryContainsUnsafeVolumeID(t *testing.T) {
 	t.Setenv("DISK_CACHE_PATH", "/mnt/cache")
-	got := derivedCacheDirectory("../../etc")
-	if filepath.Dir(got) != "/mnt/cache" || !strings.HasPrefix(filepath.Base(got), "volume-") {
-		t.Fatalf("unsafe volume ID produced cache directory %q", got)
+	if got, want := derivedCacheDirectory("bucket/../volume"), "/mnt/cache/bucket%2F..%2Fvolume"; got != want {
+		t.Fatalf("derivedCacheDirectory() = %q, want %q", got, want)
 	}
 }

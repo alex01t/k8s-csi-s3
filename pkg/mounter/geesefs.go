@@ -1,11 +1,10 @@
 package mounter
 
 import (
-	"crypto/sha256"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -21,19 +20,17 @@ const (
 	defaultDiskCachePath = "/var/lib/geesefs-cache"
 )
 
-var safeVolumeID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-
 // derivedCacheDirectory returns a volume-specific directory below the configured
-// cache root. Hashing unusual volume IDs prevents separators and traversal
-// sequences supplied by a statically provisioned volume from escaping the root.
+// cache root. Path escaping keeps the volume ID recognizable while preventing
+// separators supplied by a statically provisioned volume from escaping the root.
 func derivedCacheDirectory(volumeID string) string {
 	root := os.Getenv("DISK_CACHE_PATH")
 	if root == "" {
 		root = defaultDiskCachePath
 	}
-	name := volumeID
-	if !safeVolumeID.MatchString(name) || name == "." || name == ".." || len(name) > 255 {
-		name = fmt.Sprintf("volume-%x", sha256.Sum256([]byte(volumeID)))
+	name := url.PathEscape(volumeID)
+	if name == "" || name == "." || name == ".." {
+		name = "volume-" + name
 	}
 	return filepath.Join(root, name)
 }
